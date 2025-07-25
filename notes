@@ -1,0 +1,466 @@
+ATS Platform - Complete Reference Documentation
+Table of Contents
+
+System Overview
+Architecture
+Frontend Components
+Backend API
+Database Schema
+Key Features
+Security & Authentication
+File Management
+Workflow System
+Email Service
+API Endpoints
+Environment Configuration
+
+System Overview
+The ATS (Applicant Tracking System) is a comprehensive recruitment management platform built with:
+
+Frontend: React.js with Material-UI components
+Backend: Node.js with Express.js
+Database: MongoDB with Mongoose ODM
+File Storage: AWS S3
+Email Service: SendGrid (Production) / Mailtrap (Development)
+Authentication: JWT with optional 2FA
+Queue System: Bull with Redis
+
+Key Modules
+
+Candidate Management: Multi-step forms for personal, education, employment, KYC, and financial details
+Client Management: Business types (Contract, Permanent, RPO) with SPOC management
+Requirement Management: Job postings with allocation to recruiters/teams/vendors
+BGV Vendor Management: Background verification vendor integration
+Agency/Freelancer Onboarding: External recruitment partner management
+Recruiter Workflow: Call forms and candidate tracking
+
+Architecture
+Frontend Structure
+src/
+├── components/
+│   ├── CandidateForm.js          # Multi-step candidate form wrapper
+│   ├── CandidatePersonalDetails.js
+│   ├── EducationDetails.js
+│   ├── EmploymentDetails.js
+│   ├── KYCCandidate.js
+│   ├── BusinessTypeForm.js       # Financial calculations
+│   ├── ClientDetailsForm.js      # Client management
+│   ├── AddclientsATS.js         # Client onboarding
+│   ├── AddRequirement.js        # Job posting creation
+│   ├── AllocateRequirement.js   # Job allocation
+│   ├── RecruiterCallForm.js     # Recruiter workflow
+│   ├── AddBGVVendor.js          # BGV vendor management
+│   ├── AgencyOnboarding.js      # Agency partner onboarding
+│   ├── FreelanceRecruiterOnboarding.js
+│   └── LeavePolicyForclients.js # Leave policy configuration
+└── FormStyles.css
+Backend Structure
+├── config/
+│   └── database.js              # MongoDB connection
+├── controllers/
+│   ├── candidateController.js   # Candidate CRUD operations
+│   ├── clientController.js      # Client management
+│   └── authController.js        # Authentication logic
+├── middleware/
+│   ├── auth.js                  # JWT authentication
+│   ├── security.js              # Security middleware
+│   ├── upload.js                # File upload handling
+│   └── validation.js            # Request validation
+├── models/
+│   ├── Candidate.js             # Candidate schema
+│   ├── Client.js                # Client schema
+│   ├── Requirement.js           # Job requirement schema
+│   ├── User.js                  # User authentication
+│   └── FileDocument.js          # File management
+├── routes/
+│   ├── index.js                 # Route aggregator
+│   ├── candidateRoutes.js
+│   ├── clientRoutes.js
+│   └── authRoutes.js
+├── services/
+│   ├── emailService.js          # Email queue management
+│   ├── fileService.js           # S3 file operations
+│   └── workflowService.js       # Workflow automation
+└── utils/
+    └── encryption.js            # Data encryption utilities
+Frontend Components
+1. Candidate Management Components
+CandidatePersonalDetails.js
+
+Personal information (name, DOB, gender, marital status)
+Contact details (phone, WhatsApp, email)
+Emergency contact information
+Passport image upload
+WhatsApp number same as phone checkbox feature
+
+EducationDetails.js
+
+Multiple education entries support
+Fields: education type, institution, dates, marks, mode of education
+Certificate upload for each entry
+Dynamic add/remove education entries
+
+EmploymentDetails.js
+
+Employment history with multiple entries
+Working status tracking
+Document management (resignation, PF, payslips, etc.)
+Notice period auto-calculation
+Offer in hand tracking
+
+KYCCandidate.js
+
+Aadhaar, PAN, Passport documentation
+Bank account preference (existing/new)
+Permanent and current address management
+Address proof uploads
+Same as permanent address feature
+
+BusinessTypeForm.js
+Financial calculations for different business types:
+
+Contract: Margin calculations with leave cost
+Contract MSP: MSP fee deductions
+Permanent: Invoice value calculations
+Automatic hike percentage calculation
+
+2. Client Management Components
+ClientDetailsForm.js
+Comprehensive client setup including:
+
+Business type selection (Contract/Permanent/RPO)
+Address and billing information
+Timesheet configuration (portal/manual)
+Document requirements for candidates/clients
+Leave policy configuration
+Background verification policy
+Education policy matrix
+Blocklisted companies/universities upload
+SPOC management with roles
+
+AddclientsATS.js
+Dynamic form based on business type:
+
+Contract: Client details with agreement
+Contract MSP: MSP percentage configuration
+Permanent: Client percentage setup
+RPO: Skill-based pricing matrix
+
+3. Requirement Management
+AddRequirement.js
+Job posting creation with:
+
+Job details and client selection
+Key skills with experience requirements
+Work mode (hybrid/remote/office) configuration
+Shift and schedule settings
+Salary range with variable component
+Education and diversity preferences
+Perks and benefits selection
+Interview rounds configuration
+Company information
+
+AllocateRequirement.js
+Dynamic allocation interface:
+
+Allocate to all/specific groups
+Individual recruiter selection
+Team-based allocation with hierarchy
+Freelancer assignment
+Vendor allocation
+
+4. Recruiter Workflow
+RecruiterCallForm.js
+Comprehensive call script with:
+
+Initial candidate response tracking
+Education verification workflow
+Experience and location assessment
+Relocation willingness evaluation
+Salary negotiation tracking
+Notice period management
+Reference collection
+Follow-up scheduling
+
+5. Partner Management
+AddBGVVendor.js / VendorSourcing.js
+
+Vendor details and website
+Address and billing setup
+Document management with validity
+Multiple SPOC support
+Functional roles assignment
+
+AgencyOnboarding.js
+10-section comprehensive form:
+
+Company Details
+Contact Details
+Recruitment Capability
+Current Client Engagements
+Past Performance & KPIs
+Team Information
+Commercials & Terms
+Compliance & Documentation
+Bank Account Details
+Declaration
+
+FreelanceRecruiterOnboarding.js
+
+Personal and contact details
+Skills and expertise areas
+Availability commitment
+Commercial terms
+Document submission
+
+Backend API
+Authentication System
+
+JWT-based authentication
+Optional 2FA support
+Password reset flow
+Email verification
+Account lockout after failed attempts
+Role-based access control (RBAC)
+
+Security Features
+
+Helmet.js for security headers
+Rate limiting per endpoint
+XSS protection
+NoSQL injection prevention
+CORS configuration
+Request validation with express-validator
+
+File Management
+
+S3 integration for secure storage
+Pre-signed URLs for access
+Virus scanning integration
+File type validation
+Automatic file categorization
+Access control per file
+
+Database Schema
+Candidate Schema
+javascript{
+  personalDetails: { firstName, lastName, DOB, gender, maritalStatus },
+  contactInfo: { phone, whatsapp, email },
+  emergencyContact: { person, phone, relationship },
+  education: [{ type, institution, dates, certificate }],
+  employment: [{ company, designation, dates, documents }],
+  kyc: { aadhaar, pan, passport },
+  bankDetails: { account, ifsc, branch },
+  address: { permanent, current },
+  financialInfo: { calculations },
+  recruiterCallData: { detailed tracking },
+  status: enum['New', 'Screening', 'Submitted', ...],
+  workflowStage: enum['Personal Details', 'Education', ...]
+}
+Client Schema
+javascript{
+  businessType: enum['Contract', 'Permanent', 'RPO'],
+  businessDetails: { name, industry, website },
+  addressDetails: { primary, billing },
+  billingInfo: { gst, payment terms },
+  timesheetConfig: { type, portal details },
+  documents: { forCandidates[], forClients[] },
+  leavePolicy: { pre/post probation },
+  verificationPolicy: { education, employment },
+  spocDetails: [{ name, email, roles }]
+}
+Requirement Schema
+javascript{
+  jobTitle, employmentType, clientId,
+  keySkills: [{ name, experience, mandatory }],
+  workDetails: { mode, shift, location },
+  salary: { type, range, variable },
+  interviewRounds: [{ name, mode, type }],
+  allocation: { recruiters[], teams[], vendors[] },
+  metrics: { applications, shortlisted, selected }
+}
+Key Features
+1. Multi-step Form Management
+
+Progress tracking across forms
+Auto-save functionality
+Validation at each step
+File upload integration
+Conditional field rendering
+
+2. Dynamic Business Rules
+
+Business type-specific forms
+Automatic financial calculations
+Conditional document requirements
+Role-based field visibility
+
+3. Workflow Automation
+
+Stage-based progression
+Automated notifications
+Reminder system
+Status tracking
+Audit trail
+
+4. Document Management
+
+Categorized storage
+Validity tracking
+Verification workflow
+Secure access
+Bulk operations
+
+5. Leave Policy Configuration
+
+Multiple leave types
+Carry forward rules
+Encashment settings
+Credit frequency
+Probation-based policies
+
+Security & Authentication
+Authentication Flow
+
+User registration with email verification
+JWT token generation on login
+Token refresh mechanism
+Secure password reset
+2FA implementation
+
+Authorization
+
+Role-based access (super_admin, admin, recruiter, hr, client, vendor)
+Permission-based actions per module
+Resource-level access control
+API endpoint protection
+
+File Management
+Upload Process
+
+Client-side validation
+Multer middleware processing
+Virus scanning
+S3 upload with encryption
+Database record creation
+Access URL generation
+
+File Categories
+
+resume, education_certificate, experience_letter
+kyc_document, photo, agreement
+policy_document, other
+
+Workflow System
+Candidate Workflow Stages
+
+Personal Details → Education → Employment → KYC → Financial → Review → Complete
+
+Client Onboarding Workflow
+
+Business Details → Address & Billing → Documents → Leave Policy → Verification Policy → SPOC Details → Review & Approval
+
+Automated Actions
+
+Pending approval reminders
+Stale record updates
+Status change notifications
+Workflow completion alerts
+
+Email Service
+Email Templates
+
+Welcome & verification
+Password reset
+Status updates
+Interview invitations
+Offer letters
+Daily digests
+
+Queue Management
+
+Bull queue with Redis
+Retry mechanism
+Priority handling
+Bulk email support
+
+API Endpoints
+Authentication
+
+POST /api/v1/auth/signup
+POST /api/v1/auth/login
+POST /api/v1/auth/forgot-password
+POST /api/v1/auth/reset-password/:token
+GET /api/v1/auth/me
+
+Candidates
+
+GET /api/v1/candidates
+POST /api/v1/candidates/step
+GET /api/v1/candidates/:id
+PATCH /api/v1/candidates/:id/status
+POST /api/v1/candidates/:id/notes
+
+Clients
+
+GET /api/v1/clients
+POST /api/v1/clients
+GET /api/v1/clients/:id
+POST /api/v1/clients/:id/spoc
+PATCH /api/v1/clients/:id/spoc/:spocId
+
+Requirements
+
+GET /api/v1/requirements
+POST /api/v1/requirements
+POST /api/v1/requirements/:id/allocate
+PATCH /api/v1/requirements/:id/status
+
+Environment Configuration
+Required Environment Variables
+env# Application
+NODE_ENV=production
+PORT=5000
+APP_NAME=ATS Platform
+APP_URL=https://ats.example.com
+
+# Database
+MONGODB_URI=mongodb+srv://...
+
+# Authentication
+JWT_SECRET=your-secret-key
+JWT_EXPIRES_IN=7d
+
+# AWS S3
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+AWS_REGION=ap-south-1
+AWS_S3_BUCKET=ats-documents
+
+# Email
+SENDGRID_USERNAME=apikey
+SENDGRID_PASSWORD=your-api-key
+
+# Redis
+REDIS_URL=redis://localhost:6379
+Deployment Considerations
+
+Database: Set up MongoDB replica set for production
+Redis: Configure Redis for session and queue management
+S3: Create bucket with proper IAM policies
+Email: Configure SendGrid with verified domain
+SSL: Implement HTTPS with valid certificates
+Monitoring: Set up logging and error tracking
+Backup: Implement automated database backups
+Scaling: Use load balancer for horizontal scaling
+
+Best Practices
+
+Security: Always validate and sanitize inputs
+Performance: Implement caching for frequently accessed data
+Error Handling: Use centralized error handling
+Testing: Write unit and integration tests
+Documentation: Keep API documentation updated
+Code Quality: Use ESLint and code formatting
+Version Control: Follow GitFlow branching strategy
+CI/CD: Implement automated deployment pipeline
