@@ -309,6 +309,44 @@ exports.verifyEmail = catchAsync(async (req, res, next) => {
   });
 });
 
+// Resend verification email
+exports.resendVerification = catchAsync(async (req, res, next) => {
+  const { email } = req.body;
+  
+  if (!email) {
+    return next(new AppError('Please provide an email address', 400));
+  }
+  
+  const user = await User.findOne({ email });
+  
+  if (!user) {
+    return next(new AppError('No user found with that email address', 404));
+  }
+  
+  if (user.isEmailVerified) {
+    return next(new AppError('Email is already verified', 400));
+  }
+  
+  // Generate new verification token
+  const verifyToken = crypto.randomBytes(32).toString('hex');
+  const hashedToken = crypto
+    .createHash('sha256')
+    .update(verifyToken)
+    .digest('hex');
+  
+  user.emailVerificationToken = hashedToken;
+  user.emailVerificationExpires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
+  await user.save({ validateBeforeSave: false });
+  
+  // Send verification email
+  await EmailService.sendWelcome(user);
+  
+  res.status(200).json({
+    status: 'success',
+    message: 'Verification email sent successfully'
+  });
+});
+
 // Enable 2FA
 exports.enable2FA = catchAsync(async (req, res, next) => {
   const secret = speakeasy.generateSecret({
@@ -348,6 +386,24 @@ exports.verify2FA = catchAsync(async (req, res, next) => {
   await req.user.save({ validateBeforeSave: false });
   
   createSendToken(req.user, 200, res);
+});
+
+// Disable 2FA
+exports.disable2FA = catchAsync(async (req, res, next) => {
+  const user = await User.findById(req.user.id);
+  
+  if (!user.twoFactorEnabled) {
+    return next(new AppError('2FA is not enabled', 400));
+  }
+  
+  user.twoFactorEnabled = false;
+  user.twoFactorSecret = undefined;
+  await user.save({ validateBeforeSave: false });
+  
+  res.status(200).json({
+    status: 'success',
+    message: '2FA disabled successfully'
+  });
 });
 
 // Admin functions

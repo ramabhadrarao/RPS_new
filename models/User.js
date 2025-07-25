@@ -48,6 +48,7 @@ const userSchema = new mongoose.Schema({
   emailVerificationExpires: Date,
   passwordResetToken: String,
   passwordResetExpires: Date,
+  passwordChangedAt: Date,
   lastLogin: Date,
   loginAttempts: {
     type: Number,
@@ -72,26 +73,58 @@ userSchema.virtual('isLocked').get(function() {
   return !!(this.lockUntil && this.lockUntil > Date.now());
 });
 
-// Methods
+// Pre-save middleware for password hashing
+userSchema.pre('save', async function(next) {
+  // Only run this function if password was actually modified
+  if (!this.isModified('password')) return next();
+  
+  // Hash the password with cost of 12
+  this.password = await bcrypt.hash(this.password, 12);
+  
+  // Delete passwordConfirm field
+  this.passwordConfirm = undefined;
+  
+  next();
+});
+
+// Pre-save middleware for password change timestamp
+userSchema.pre('save', function(next) {
+  if (!this.isModified('password') || this.isNew) return next();
+  
+  this.passwordChangedAt = Date.now() - 1000;
+  next();
+});
+
+// Instance method to compare passwords
 userSchema.methods.comparePassword = async function(candidatePassword) {
   return await bcrypt.compare(candidatePassword, this.password);
 };
 
+// Instance method to check if password changed after JWT was issued
+userSchema.methods.changedPasswordAfter = function(JWTTimestamp) {
+  if (this.passwordChangedAt) {
+    const changedTimestamp = parseInt(
+      this.passwordChangedAt.getTime() / 1000,
+      10
+    );
+    return JWTTimestamp < changedTimestamp;
+  }
+  // False means NOT changed
+  return false;
+};
+
+// Instance method to create password reset token
 userSchema.methods.createPasswordResetToken = function() {
   const resetToken = crypto.randomBytes(32).toString('hex');
+  
   this.passwordResetToken = crypto
     .createHash('sha256')
     .update(resetToken)
     .digest('hex');
+    
   this.passwordResetExpires = Date.now() + 30 * 60 * 1000; // 30 minutes
+  
   return resetToken;
 };
-
-// Middleware
-userSchema.pre('save', async function(next) {
-  if (!this.isModified('password')) return next();
-  this.password = await bcrypt.hash(this.password, 12);
-  next();
-});
 
 module.exports = mongoose.model('User', userSchema);
