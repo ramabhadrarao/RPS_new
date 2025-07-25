@@ -310,6 +310,178 @@ class ClientController {
       }
     });
   });
+
+  // Get blocklisted companies
+  getBlocklistedCompanies = catchAsync(async (req, res, next) => {
+    const client = await Client.findById(req.params.id);
+    
+    if (!client) {
+      return next(new AppError('No client found with that ID', 404));
+    }
+    
+    // Parse blocklist file if exists
+    if (client.verificationPolicy?.blocklistUploads?.blocklistedCompaniesFileId) {
+      const file = await FileService.getFile(
+        client.verificationPolicy.blocklistUploads.blocklistedCompaniesFileId,
+        req.user
+      );
+      
+      // Parse CSV/Excel file
+      const companies = await WorkflowService.parseBlocklistFile(file);
+      
+      res.status(200).json({
+        status: 'success',
+        data: { companies }
+      });
+    } else {
+      res.status(200).json({
+        status: 'success',
+        data: { companies: [] }
+      });
+    }
+  });
+
+  // Upload blocklisted companies
+  uploadBlocklistedCompanies = catchAsync(async (req, res, next) => {
+    const client = await Client.findById(req.params.id);
+    
+    if (!client) {
+      return next(new AppError('No client found with that ID', 404));
+    }
+    
+    if (!req.file) {
+      return next(new AppError('Please upload a file', 400));
+    }
+    
+    // Upload file
+    const uploadedFile = await FileService.uploadSingle(
+      req.file,
+      'Client',
+      client._id,
+      req.user._id,
+      'blocklist'
+    );
+    
+    // Update client
+    if (!client.verificationPolicy) {
+      client.verificationPolicy = {};
+    }
+    if (!client.verificationPolicy.blocklistUploads) {
+      client.verificationPolicy.blocklistUploads = {};
+    }
+    client.verificationPolicy.blocklistUploads.blocklistedCompaniesFileId = uploadedFile._id;
+    await client.save();
+    
+    res.status(200).json({
+      status: 'success',
+      data: {
+        fileId: uploadedFile._id
+      }
+    });
+  });
+
+  // Clear blocklisted companies
+  clearBlocklistedCompanies = catchAsync(async (req, res, next) => {
+    const client = await Client.findById(req.params.id);
+    
+    if (!client) {
+      return next(new AppError('No client found with that ID', 404));
+    }
+    
+    if (client.verificationPolicy?.blocklistUploads?.blocklistedCompaniesFileId) {
+      client.verificationPolicy.blocklistUploads.blocklistedCompaniesFileId = null;
+      await client.save();
+    }
+    
+    res.status(200).json({
+      status: 'success',
+      message: 'Blocklisted companies cleared'
+    });
+  });
+
+  // Get blocklisted universities
+  getBlocklistedUniversities = catchAsync(async (req, res, next) => {
+    const client = await Client.findById(req.params.id);
+    
+    if (!client) {
+      return next(new AppError('No client found with that ID', 404));
+    }
+    
+    if (client.verificationPolicy?.blocklistUploads?.blocklistedUniversitiesFileId) {
+      const file = await FileService.getFile(
+        client.verificationPolicy.blocklistUploads.blocklistedUniversitiesFileId,
+        req.user
+      );
+      
+      const universities = await WorkflowService.parseBlocklistFile(file);
+      
+      res.status(200).json({
+        status: 'success',
+        data: { universities }
+      });
+    } else {
+      res.status(200).json({
+        status: 'success',
+        data: { universities: [] }
+      });
+    }
+  });
+
+  // Upload blocklisted universities
+  uploadBlocklistedUniversities = catchAsync(async (req, res, next) => {
+    const client = await Client.findById(req.params.id);
+    
+    if (!client) {
+      return next(new AppError('No client found with that ID', 404));
+    }
+    
+    if (!req.file) {
+      return next(new AppError('Please upload a file', 400));
+    }
+    
+    const uploadedFile = await FileService.uploadSingle(
+      req.file,
+      'Client',
+      client._id,
+      req.user._id,
+      'blocklist'
+    );
+    
+    if (!client.verificationPolicy) {
+      client.verificationPolicy = {};
+    }
+    if (!client.verificationPolicy.blocklistUploads) {
+      client.verificationPolicy.blocklistUploads = {};
+    }
+    client.verificationPolicy.blocklistUploads.blocklistedUniversitiesFileId = uploadedFile._id;
+    await client.save();
+    
+    res.status(200).json({
+      status: 'success',
+      data: {
+        fileId: uploadedFile._id
+      }
+    });
+  });
+
+  // Clear blocklisted universities
+  clearBlocklistedUniversities = catchAsync(async (req, res, next) => {
+    const client = await Client.findById(req.params.id);
+    
+    if (!client) {
+      return next(new AppError('No client found with that ID', 404));
+    }
+    
+    if (client.verificationPolicy?.blocklistUploads?.blocklistedUniversitiesFileId) {
+      client.verificationPolicy.blocklistUploads.blocklistedUniversitiesFileId = null;
+      await client.save();
+    }
+    
+    res.status(200).json({
+      status: 'success',
+      message: 'Blocklisted universities cleared'
+    });
+  });
 }
 
 module.exports = new ClientController();
