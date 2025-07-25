@@ -15,6 +15,8 @@ const connectDB = require('./config/database');
 const routes = require('./routes');
 const { globalErrorHandler } = require('./middleware/errorHandler');
 const { setupSecurity } = require('./middleware/security');
+const { serveFile } = require('./middleware/serveFiles');
+const { isLoggedIn } = require('./middleware/auth');
 
 // Initialize express app
 const app = express();
@@ -36,8 +38,9 @@ app.use(cookieParser());
 // Compression middleware
 app.use(compression());
 
-// Serve static files
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Serve uploaded files with access control
+// Apply authentication check for non-public files
+app.use('/uploads', isLoggedIn, serveFile);
 
 // API routes
 app.use(routes);
@@ -66,6 +69,7 @@ app.all('*', (req, res) => {
 const PORT = process.env.PORT || 5000;
 const server = app.listen(PORT, () => {
   console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
+  console.log(`Files will be stored locally in: ${path.join(__dirname, 'uploads')}`);
 });
 
 // Handle unhandled promise rejections
@@ -84,5 +88,21 @@ process.on('SIGTERM', () => {
     console.log('Process terminated!');
   });
 });
+
+// Schedule cleanup tasks
+const { FileService } = require('./services/fileService');
+
+// Run cleanup every day at 2 AM
+setInterval(async () => {
+  const hour = new Date().getHours();
+  if (hour === 2) {
+    try {
+      await FileService.cleanupDeletedFiles();
+      console.log('File cleanup completed');
+    } catch (error) {
+      console.error('File cleanup error:', error);
+    }
+  }
+}, 60 * 60 * 1000); // Check every hour
 
 module.exports = app;

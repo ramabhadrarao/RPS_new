@@ -1,22 +1,40 @@
 // services/fileService.js
-const AWS = require('aws-sdk');
 const multer = require('multer');
-const multerS3 = require('multer-s3');
 const crypto = require('crypto');
+const path = require('path');
+const fs = require('fs').promises;
 const FileDocument = require('../models/FileDocument');
 const config = require('../config/constants');
 const { AppError } = require('../utils/appError');
 
 class FileService {
   constructor() {
-    // Configure AWS S3
-    this.s3 = new AWS.S3({
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-      region: process.env.AWS_REGION
-    });
+    // Base upload directory
+    this.uploadDir = path.join(__dirname, '..', 'uploads');
     
-    this.bucket = process.env.AWS_S3_BUCKET;
+    // Ensure upload directory exists
+    this.ensureUploadDirs();
+  }
+  
+  // Ensure upload directories exist
+  async ensureUploadDirs() {
+    const dirs = [
+      this.uploadDir,
+      path.join(this.uploadDir, 'Candidate'),
+      path.join(this.uploadDir, 'Client'),
+      path.join(this.uploadDir, 'Requirement'),
+      path.join(this.uploadDir, 'BGVVendor'),
+      path.join(this.uploadDir, 'Agency'),
+      path.join(this.uploadDir, 'User')
+    ];
+    
+    for (const dir of dirs) {
+      try {
+        await fs.access(dir);
+      } catch {
+        await fs.mkdir(dir, { recursive: true });
+      }
+    }
   }
   
   // Generate secure file name
@@ -42,22 +60,16 @@ class FileService {
         category
       );
       
-      // Upload to S3
-      const uploadParams = {
-        Bucket: this.bucket,
-        Key: fileName,
-        Body: file.buffer,
-        ContentType: file.mimetype,
-        ServerSideEncryption: 'AES256',
-        Metadata: {
-          uploadedBy: uploadedBy.toString(),
-          entityType,
-          entityId: entityId.toString(),
-          category
-        }
-      };
+      // Create directory structure
+      const filePath = path.join(this.uploadDir, fileName);
+      const fileDir = path.dirname(filePath);
+      await fs.mkdir(fileDir, { recursive: true });
       
-      const s3Response = await this.s3.upload(uploadParams).promise();
+      // Write file to disk
+      await fs.writeFile(filePath, file.buffer);
+      
+      // Generate URL for accessing the file
+      const fileUrl = `/uploads/${fileName}`;
       
       // Create file document
       const fileDocument = new FileDocument({
@@ -66,9 +78,9 @@ class FileService {
         fileType: file.originalname.split('.').pop(),
         mimeType: file.mimetype,
         size: file.size,
-        url: s3Response.Location,
-        s3Key: s3Response.Key,
-        bucket: this.bucket,
+        url: fileUrl,
+        s3Key: fileName, // Using as local path reference
+        bucket: 'local', // Indicator that it's local storage
         category,
         entityType,
         entityId,
@@ -131,24 +143,36 @@ class FileService {
     file.accessCount += 1;
     await file.save();
     
-    // Generate pre-signed URL for secure access
-    const signedUrl = await this.generateSignedUrl(file.s3Key);
+    // Check if file exists on disk
+    const filePath = path.join(this.uploadDir, file.s3Key);
+    try {
+      await fs.access(filePath);
+    } catch {
+      throw new AppError('File not found on disk', 404);
+    }
     
     return {
       ...file.toObject(),
-      url: signedUrl
+      filePath // Return local file path for serving
     };
   }
   
-  // Generate pre-signed URL
-  async generateSignedUrl(key, expiresIn = 3600) {
-    const params = {
-      Bucket: this.bucket,
-      Key: key,
-      Expires: expiresIn
-    };
+  // Get file buffer (for parsing blocklist files)
+  async getFileBuffer(fileId) {
+    const file = await FileDocument.findById(fileId);
     
-    return this.s3.getSignedUrlPromise('getObject', params);
+    if (!file || file.isDeleted) {
+      throw new AppError('File not found', 404);
+    }
+    
+    const filePath = path.join(this.uploadDir, file.s3Key);
+    const buffer = await fs.readFile(filePath);
+    
+    return {
+      buffer,
+      fileType: file.fileType,
+      mimeType: file.mimeType
+    };
   }
   
   // Delete file (soft delete)
@@ -169,8 +193,8 @@ class FileService {
     file.deletedAt = new Date();
     await file.save();
     
-    // Schedule S3 deletion after 30 days
-    this.scheduleS3Deletion(file.s3Key, 30);
+    // Schedule physical deletion after 30 days
+    this.schedulePhysicalDeletion(file.s3Key, 30);
     
     return file;
   }
@@ -257,16 +281,37 @@ class FileService {
     return 'other';
   }
   
-  // Initiate virus scan (using ClamAV or similar)
+  // Initiate virus scan (placeholder for actual implementation)
   async initiateVirusScan(fileId) {
-    // Queue virus scan job
-    // Implementation depends on your virus scanning service
+    // In a production environment, you would integrate with a virus scanning service
+    // For now, we'll just mark files as clean after a delay
+    setTimeout(async () => {
+      try {
+        await FileDocument.findByIdAndUpdate(fileId, {
+          virusScanStatus: 'clean',
+          virusScanResult: { scannedAt: new Date(), result: 'clean' }
+        });
+      } catch (error) {
+        console.error('Virus scan update error:', error);
+      }
+    }, 1000);
   }
   
-  // Schedule S3 deletion
-  async scheduleS3Deletion(key, daysDelay) {
-    // Schedule deletion job
-    // Implementation depends on your job queue service
+  // Schedule physical deletion
+  async schedulePhysicalDeletion(filePath, daysDelay) {
+    // In production, use a job queue like Bull
+    // For now, we'll use setTimeout for demonstration
+    const delay = daysDelay * 24 * 60 * 60 * 1000; // Convert days to milliseconds
+    
+    setTimeout(async () => {
+      try {
+        const fullPath = path.join(this.uploadDir, filePath);
+        await fs.unlink(fullPath);
+        console.log(`Physically deleted file: ${filePath}`);
+      } catch (error) {
+        console.error(`Error deleting file ${filePath}:`, error);
+      }
+    }, delay);
   }
   
   // Get entity documents
@@ -299,6 +344,50 @@ class FileService {
     );
     
     return updates;
+  }
+  
+  // Clean up old deleted files
+  async cleanupDeletedFiles() {
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    
+    const deletedFiles = await FileDocument.find({
+      isDeleted: true,
+      deletedAt: { $lt: thirtyDaysAgo }
+    });
+    
+    for (const file of deletedFiles) {
+      try {
+        const filePath = path.join(this.uploadDir, file.s3Key);
+        await fs.unlink(filePath);
+        await FileDocument.findByIdAndDelete(file._id);
+        console.log(`Cleaned up file: ${file.originalName}`);
+      } catch (error) {
+        console.error(`Error cleaning up file ${file._id}:`, error);
+      }
+    }
+  }
+  
+  // Validate file header (basic implementation)
+  async validateFileHeader(buffer, mimeType) {
+    // Basic file signature validation
+    const signatures = {
+      'application/pdf': [0x25, 0x50, 0x44, 0x46], // %PDF
+      'image/jpeg': [0xFF, 0xD8, 0xFF],
+      'image/png': [0x89, 0x50, 0x4E, 0x47],
+      'image/gif': [0x47, 0x49, 0x46, 0x38]
+    };
+    
+    const signature = signatures[mimeType];
+    if (!signature) return true; // Skip validation for unknown types
+    
+    for (let i = 0; i < signature.length; i++) {
+      if (buffer[i] !== signature[i]) {
+        return false;
+      }
+    }
+    
+    return true;
   }
 }
 

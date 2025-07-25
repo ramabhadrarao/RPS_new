@@ -221,6 +221,32 @@ exports.validatePagination = [
   handleValidationErrors
 ];
 
+// Leave Policy validation
+exports.validateLeavePolicy = [
+  body('leavePolicy.preProbation')
+    .optional()
+    .isObject()
+    .withMessage('Pre-probation leave policy must be an object'),
+  body('leavePolicy.postProbation')
+    .optional()
+    .isObject()
+    .withMessage('Post-probation leave policy must be an object'),
+  handleValidationErrors
+];
+
+// Blocklist validation
+exports.validateBlocklist = [
+  body('companies')
+    .optional()
+    .isArray()
+    .withMessage('Companies must be an array'),
+  body('universities')
+    .optional()
+    .isArray()
+    .withMessage('Universities must be an array'),
+  handleValidationErrors
+];
+
 // Custom validators
 exports.isValidIndianMobile = (value) => {
   return /^[6-9]\d{9}$/.test(value);
@@ -237,3 +263,6 @@ exports.isValidPAN = (value) => {
 exports.isValidAadhaar = (value) => {
   return /^\d{12}$/.test(value);
 };
+
+// Export handleValidationErrors for direct use
+exports.handleValidationErrors = handleValidationErrors;

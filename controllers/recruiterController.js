@@ -2,6 +2,7 @@
 const Candidate = require('../models/Candidate');
 const Requirement = require('../models/Requirement');
 const User = require('../models/User');
+const Activity = require('../models/Activity');
 const { AppError } = require('../utils/appError');
 const catchAsync = require('../utils/catchAsync');
 
@@ -251,35 +252,60 @@ class RecruiterController {
   
   // Get activities
   getActivities = catchAsync(async (req, res, next) => {
-    const { page = 1, limit = 20 } = req.query;
+    const { page = 1, limit = 20, entityType, entityId } = req.query;
     
-    // This would typically come from an Activity model
-    // For now, returning a placeholder
+    const query = {};
+    if (entityType) query.entityType = entityType;
+    if (entityId) query.entityId = entityId;
+    
+    // For recruiters, only show their activities
+    if (req.user.role === 'recruiter') {
+      query.performedBy = req.user._id;
+    }
+    
+    const activities = await Activity
+      .find(query)
+      .populate('performedBy', 'firstName lastName')
+      .populate({
+        path: 'entityId',
+        select: 'name title jobTitle'
+      })
+      .sort('-createdAt')
+      .limit(limit * 1)
+      .skip((page - 1) * limit);
+    
+    const total = await Activity.countDocuments(query);
+    
     res.status(200).json({
       status: 'success',
+      results: activities.length,
+      totalPages: Math.ceil(total / limit),
+      currentPage: page,
       data: {
-        activities: []
+        activities
       }
     });
   });
   
   // Log activity
   logActivity = catchAsync(async (req, res, next) => {
-    const { type, description, entityType, entityId } = req.body;
+    const { type, description, entityType, entityId, metadata } = req.body;
     
-    // This would typically create an activity record
-    // For now, returning success
+    const activity = await Activity.create({
+      type,
+      description,
+      entityType,
+      entityId,
+      metadata,
+      performedBy: req.user._id,
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent')
+    });
+    
     res.status(201).json({
       status: 'success',
       data: {
-        activity: {
-          type,
-          description,
-          entityType,
-          entityId,
-          createdBy: req.user._id,
-          createdAt: new Date()
-        }
+        activity
       }
     });
   });

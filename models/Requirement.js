@@ -115,6 +115,31 @@ const requirementSchema = new mongoose.Schema({
   refreshInterval: Number, // in days
   lastRefreshedAt: Date,
   
+  // Job posting specific fields
+  isJobPosting: { 
+    type: Boolean, 
+    default: false 
+  },
+  
+  // Questions for candidates (from JobPostingForm)
+  screeningQuestions: [{
+    question: String,
+    answerType: { 
+      type: String, 
+      enum: ['text', 'yes/no', 'multiple-choice'] 
+    },
+    options: [String], // for multiple choice
+    isRequired: Boolean
+  }],
+  
+  // Auto-refresh settings
+  autoRefresh: {
+    enabled: Boolean,
+    intervalDays: Number,
+    lastRefreshedAt: Date,
+    nextRefreshAt: Date
+  },
+  
   // Allocation Details
   allocation: {
     all: {

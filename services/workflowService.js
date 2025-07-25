@@ -7,6 +7,7 @@ const EmailService = require('./emailService');
 const excel = require('exceljs');
 const csv = require('csv-writer');
 const PDFDocument = require('pdfkit');
+const FileService = require('./fileService');
 
 class WorkflowService {
   // Client workflow
@@ -165,6 +166,49 @@ class WorkflowService {
     }
     
     return calculated;
+  }
+  
+  // Parse blocklist file (CSV/Excel)
+  async parseBlocklistFile(file) {
+    const fileContent = await FileService.FileService.getFileBuffer(file._id);
+    const entries = [];
+    
+    if (file.fileType === 'csv') {
+      // Parse CSV
+      const csvParser = require('csv-parser');
+      const stream = require('stream');
+      const readableStream = stream.Readable.from(fileContent.buffer);
+      
+      return new Promise((resolve, reject) => {
+        readableStream
+          .pipe(csvParser())
+          .on('data', (row) => {
+            entries.push(row);
+          })
+          .on('end', () => {
+            resolve(entries);
+          })
+          .on('error', reject);
+      });
+    } else if (file.fileType === 'xlsx' || file.fileType === 'xls') {
+      // Parse Excel
+      const workbook = new excel.Workbook();
+      await workbook.xlsx.load(fileContent.buffer);
+      const worksheet = workbook.getWorksheet(1);
+      
+      worksheet.eachRow((row, rowNumber) => {
+        if (rowNumber > 1) { // Skip header
+          entries.push({
+            name: row.getCell(1).value,
+            reason: row.getCell(2).value || ''
+          });
+        }
+      });
+      
+      return entries;
+    }
+    
+    throw new Error('Unsupported file format');
   }
   
   // Export to CSV
