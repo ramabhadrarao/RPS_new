@@ -1,0 +1,23 @@
+extends layout
+
+block content
+  h2 New Requirement Assigned
+  p Hi #{userName},
+  p A new requirement has been assigned to you:
+  .requirement-details(style='background: white; padding: 20px; border-radius: 8px; margin: 20px 0;')
+    p 
+      strong Job Title: 
+      | #{jobTitle}
+    p 
+      strong Client: 
+      | #{clientName}
+    p 
+      strong Urgency: 
+      | #{urgency}
+    p 
+      strong Positions: 
+      | #{positions}
+  a.button(href=viewUrl) View Requirement
+  p Please start sourcing candidates for this position.
+  p Best regards,
+  p The #{appName} Team

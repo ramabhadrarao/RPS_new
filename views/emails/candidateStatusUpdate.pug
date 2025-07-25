@@ -1,0 +1,17 @@
+extends layout
+
+block content
+  h2 Application Status Update
+  p Dear #{candidateName},
+  p Your application status has been updated to: 
+    strong #{status}
+  if status === 'Interview'
+    p Congratulations! You have been shortlisted for an interview.
+  else if status === 'Selected'
+    p Congratulations! You have been selected for the position.
+  else if status === 'Offered'
+    p We are pleased to extend an offer for the position.
+  p You can track your application status anytime by visiting:
+  a.button(href=trackingUrl) Track Application
+  p Best regards,
+  p The #{appName} Team

@@ -1,0 +1,13 @@
+extends layout
+
+block content
+  h2 Welcome to #{appName}!
+  p Hi #{firstName},
+  p Thank you for registering with us. Your account has been created successfully.
+  p To get started, please verify your email address by clicking the button below:
+  a.button(href=verificationUrl) Verify Email
+  p If the button doesn't work, copy and paste this link into your browser:
+  p #{verificationUrl}
+  p This link will expire in 24 hours.
+  p Best regards,
+  p The #{appName} Team
