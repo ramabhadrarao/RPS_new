@@ -6,6 +6,8 @@ const User = require('../models/User');
 const catchAsync = require('../utils/catchAsync');
 const { AppError } = require('../utils/appError');
 const EmailService = require('../services/emailService');
+const TokenService = require('../services/tokenService'); // ADD THIS IMPORT
+
 const speakeasy = require('speakeasy');
 const QRCode = require('qrcode');
 
@@ -546,15 +548,107 @@ exports.checkVerificationStatus = catchAsync(async (req, res, next) => {
 });
 
 // Logout
-exports.logout = (req, res) => {
+// controllers/authController.js - Updated logout method
+exports.logout = catchAsync(async (req, res, next) => {
+  // Extract token from cookies or authorization header
+  let token;
+  
+  if (req.cookies.jwt) {
+    token = req.cookies.jwt;
+  } else if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+    token = req.headers.authorization.split(' ')[1];
+  }
+  
+  // Blacklist the token if it exists
+  if (token && token !== 'loggedout') {
+    // Decode token to get expiration time
+    const decoded = jwt.decode(token);
+    if (decoded && decoded.exp) {
+      // Calculate remaining time until token expires
+      const expiresIn = decoded.exp - Math.floor(Date.now() / 1000);
+      
+      // Blacklist the token for its remaining lifetime
+      if (expiresIn > 0) {
+        await TokenService.blacklistToken(token, expiresIn);
+      }
+    }
+  }
+  
+  // Clear the cookie
   res.cookie('jwt', 'loggedout', {
     expires: new Date(Date.now() + 10 * 1000),
-    httpOnly: true
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict'
   });
   
-  res.status(200).json({ status: 'success' });
-};
+  // Also clear any refresh tokens if implemented
+  if (req.user && req.user._id) {
+    await TokenService.deleteRefreshToken(req.user._id);
+    await TokenService.deleteSession(req.user.sessionId);
+  }
+  
+  res.status(200).json({ 
+    status: 'success',
+    message: 'Logged out successfully'
+  });
+});
+// controllers/authController.js - Logout from all devices
+exports.logoutAllDevices = catchAsync(async (req, res, next) => {
+  const userId = req.user._id;
+  
+  // Invalidate all tokens for this user
+  await TokenService.logoutAllDevices(userId.toString());
+  
+  // Update user document to force re-authentication
+  await User.findByIdAndUpdate(userId, {
+    passwordChangedAt: new Date()
+  });
+  
+  // Clear current session cookie
+  res.cookie('jwt', 'loggedout', {
+    expires: new Date(Date.now() + 10 * 1000),
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict'
+  });
+  
+  res.status(200).json({
+    status: 'success',
+    message: 'Logged out from all devices successfully'
+  });
+});
 
+// Check active sessions
+exports.getActiveSessions = catchAsync(async (req, res, next) => {
+  // In a production app, you'd track sessions in Redis
+  // This is a placeholder implementation
+  const sessions = await TokenService.getUserSessions(req.user._id);
+  
+  res.status(200).json({
+    status: 'success',
+    data: {
+      sessions: sessions.map(session => ({
+        id: session.id,
+        deviceInfo: session.deviceInfo,
+        lastActive: session.lastActive,
+        location: session.location
+      }))
+    }
+  });
+});
+
+// Revoke specific session
+exports.revokeSession = catchAsync(async (req, res, next) => {
+  const { sessionId } = req.params;
+  
+  await TokenService.deleteSession(sessionId);
+  
+  res.status(200).json({
+    status: 'success',
+    message: 'Session revoked successfully'
+  });
+});
 // Forgot password
 exports.forgotPassword = catchAsync(async (req, res, next) => {
   const { email } = req.body;

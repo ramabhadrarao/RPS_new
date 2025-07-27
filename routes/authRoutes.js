@@ -79,5 +79,7 @@ router.route('/users/:id')
   .get(authController.getUser)
   .patch(authController.updateUser)
   .delete(authController.deleteUser);
-
+router.post('/logout-all-devices', protect, authController.logoutAllDevices);
+router.get('/sessions', protect, authController.getActiveSessions);
+router.delete('/sessions/:sessionId', protect, authController.revokeSession);
 module.exports = router;
