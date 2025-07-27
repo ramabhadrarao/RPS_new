@@ -2,20 +2,13 @@
 const nodemailer = require('nodemailer');
 const pug = require('pug');
 const htmlToText = require('html-to-text');
-const Queue = require('bull');
 const path = require('path');
 const config = require('../config/constants');
 
 class EmailService {
   constructor() {
-    // Initialize email queue
-    this.emailQueue = new Queue('email', config.redis.url);
-    
     // Initialize transporter based on environment
     this.initializeTransporter();
-    
-    // Process email queue
-    this.processQueue();
   }
   
   initializeTransporter() {
@@ -34,7 +27,7 @@ class EmailService {
       this.transporter = nodemailer.createTransport({
         host: process.env.EMAIL_HOST || 'localhost',
         port: process.env.EMAIL_PORT || 1025,
-        secure: false, // true for 465, false for other ports
+        secure: false,
         auth: process.env.EMAIL_USERNAME ? {
           user: process.env.EMAIL_USERNAME,
           pass: process.env.EMAIL_PASSWORD
@@ -62,55 +55,13 @@ class EmailService {
     });
   }
   
-  // Process email queue
-  processQueue() {
-    this.emailQueue.process(async (job) => {
-      const { to, subject, template, data } = job.data;
-      try {
-        await this.send(to, subject, template, data);
-        return { success: true };
-      } catch (error) {
-        console.error('Failed to send email:', error);
-        throw error;
-      }
-    });
-    
-    // Handle completed jobs
-    this.emailQueue.on('completed', (job) => {
-      console.log(`Email job ${job.id} completed successfully`);
-    });
-    
-    // Handle failed jobs
-    this.emailQueue.on('failed', (job, err) => {
-      console.error(`Email job ${job.id} failed:`, err);
-    });
-  }
-  
-  // Queue email
-  async queueEmail(to, subject, template, data) {
-    try {
-      const job = await this.emailQueue.add(
-        { to, subject, template, data },
-        {
-          attempts: 3,
-          backoff: {
-            type: 'exponential',
-            delay: 2000
-          }
-        }
-      );
-      console.log(`Email queued with job ID: ${job.id}`);
-      return job;
-    } catch (error) {
-      console.error('Failed to queue email:', error);
-      // If queueing fails, try to send directly
-      return this.send(to, subject, template, data);
-    }
-  }
-  
-  // Send email directly
+  // Main send method - sends email directly
   async send(to, subject, template, data) {
     try {
+      console.log(`📨 Sending email directly...`);
+      console.log(`   To: ${to}`);
+      console.log(`   Subject: ${subject}`);
+      
       // Check if template file exists
       const templatePath = path.join(__dirname, '..', 'views', 'emails', `${template}.pug`);
       
@@ -127,7 +78,7 @@ class EmailService {
           filename: templatePath
         });
       } catch (pugError) {
-        console.error('Pug template error:', pugError);
+        console.error('Pug template error, using fallback:', pugError.message);
         // Fallback to simple HTML if template fails
         html = this.getFallbackTemplate(template, data);
       }
@@ -154,13 +105,20 @@ class EmailService {
         text
       };
       
+      console.log(`   From: ${mailOptions.from}`);
+      console.log(`   Sending...`);
+      
       // Send email
       const info = await this.transporter.sendMail(mailOptions);
       
-      console.log(`Email sent successfully to ${to}. Message ID: ${info.messageId}`);
+      console.log(`✅ Email sent successfully!`);
+      console.log(`   Message ID: ${info.messageId}`);
+      console.log(`   Response: ${info.response}`);
+      
       return info;
     } catch (error) {
-      console.error('Email send error:', error);
+      console.error('❌ Email send error:', error.message);
+      console.error('   Full error:', error);
       throw error;
     }
   }
@@ -169,31 +127,109 @@ class EmailService {
   getFallbackTemplate(template, data) {
     const templates = {
       welcome: `
-        <h2>Welcome to ${config.app.name}!</h2>
-        <p>Hi ${data.firstName},</p>
-        <p>Thank you for registering with us. Your account has been created successfully.</p>
-        <p>To get started, please verify your email address by clicking the link below:</p>
-        <p><a href="${data.verificationUrl}" style="background: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block;">Verify Email</a></p>
-        <p>If the button doesn't work, copy and paste this link into your browser:</p>
-        <p>${data.verificationUrl}</p>
-        <p>This link will expire in 24 hours.</p>
-        <p>Best regards,<br>The ${config.app.name} Team</p>
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <div style="background-color: #2563eb; color: white; padding: 20px; text-align: center;">
+            <h1>${config.app.name}</h1>
+          </div>
+          <div style="padding: 30px; background-color: #f8f9fa;">
+            <h2>Welcome to ${config.app.name}!</h2>
+            <p>Hi ${data.firstName},</p>
+            <p>Thank you for registering with us. Your account has been created successfully.</p>
+            <p>To get started, please verify your email address by clicking the link below:</p>
+            <p style="text-align: center;">
+              <a href="${data.verificationUrl}" style="background: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block;">Verify Email</a>
+            </p>
+            <p>If the button doesn't work, copy and paste this link into your browser:</p>
+            <p style="word-break: break-all;">${data.verificationUrl}</p>
+            <p>This link will expire in 24 hours.</p>
+            <p>Best regards,<br>The ${config.app.name} Team</p>
+          </div>
+        </div>
       `,
       passwordReset: `
-        <h2>Password Reset Request</h2>
-        <p>Hi ${data.firstName},</p>
-        <p>We received a request to reset your password. Click the button below to create a new password:</p>
-        <p><a href="${data.resetUrl}" style="background: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block;">Reset Password</a></p>
-        <p>If the button doesn't work, copy and paste this link into your browser:</p>
-        <p>${data.resetUrl}</p>
-        <p>This link will expire in ${data.validMinutes || 30} minutes.</p>
-        <p>If you didn't request this password reset, please ignore this email.</p>
-        <p>Best regards,<br>The ${config.app.name} Team</p>
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <div style="background-color: #2563eb; color: white; padding: 20px; text-align: center;">
+            <h1>${config.app.name}</h1>
+          </div>
+          <div style="padding: 30px; background-color: #f8f9fa;">
+            <h2>Password Reset Request</h2>
+            <p>Hi ${data.firstName},</p>
+            <p>We received a request to reset your password. Click the button below to create a new password:</p>
+            <p style="text-align: center;">
+              <a href="${data.resetUrl}" style="background: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block;">Reset Password</a>
+            </p>
+            <p>If the button doesn't work, copy and paste this link into your browser:</p>
+            <p style="word-break: break-all;">${data.resetUrl}</p>
+            <p>This link will expire in ${data.validMinutes || 30} minutes.</p>
+            <p>If you didn't request this password reset, please ignore this email.</p>
+            <p>Best regards,<br>The ${config.app.name} Team</p>
+          </div>
+        </div>
+      `,
+      candidateStatusUpdate: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <div style="background-color: #2563eb; color: white; padding: 20px; text-align: center;">
+            <h1>${config.app.name}</h1>
+          </div>
+          <div style="padding: 30px; background-color: #f8f9fa;">
+            <h2>Application Status Update</h2>
+            <p>Dear ${data.candidateName},</p>
+            <p>Your application status has been updated to: <strong>${data.status}</strong></p>
+            ${data.status === 'Interview' ? '<p>Congratulations! You have been shortlisted for an interview.</p>' : ''}
+            ${data.status === 'Selected' ? '<p>Congratulations! You have been selected for the position.</p>' : ''}
+            <p>Track your application status anytime:</p>
+            <p style="text-align: center;">
+              <a href="${data.trackingUrl}" style="background: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block;">Track Application</a>
+            </p>
+            <p>Best regards,<br>The ${config.app.name} Team</p>
+          </div>
+        </div>
+      `,
+      interviewInvitation: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <div style="background-color: #2563eb; color: white; padding: 20px; text-align: center;">
+            <h1>${config.app.name}</h1>
+          </div>
+          <div style="padding: 30px; background-color: #f8f9fa;">
+            <h2>Interview Invitation</h2>
+            <p>Dear ${data.candidateName},</p>
+            <p>We are pleased to invite you for an interview for the position of <strong>${data.jobTitle}</strong> at <strong>${data.companyName}</strong>.</p>
+            <div style="background: white; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <p><strong>Date:</strong> ${data.interviewDate}</p>
+              <p><strong>Time:</strong> ${data.interviewTime}</p>
+              <p><strong>Mode:</strong> ${data.interviewMode}</p>
+              ${data.joinLink ? `<p><strong>Join Link:</strong> <a href="${data.joinLink}">${data.joinLink}</a></p>` : ''}
+            </div>
+            ${data.instructions ? `<p><strong>Instructions:</strong><br>${data.instructions}</p>` : ''}
+            <p>Please confirm your availability by replying to this email.</p>
+            <p>Best regards,<br>The ${config.app.name} Team</p>
+          </div>
+        </div>
+      `,
+      test: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <div style="background-color: #2563eb; color: white; padding: 20px; text-align: center;">
+            <h1>${config.app.name}</h1>
+          </div>
+          <div style="padding: 30px; background-color: #f8f9fa;">
+            <h2>Test Email</h2>
+            <p>${data.message || 'This is a test email from ATS Platform.'}</p>
+            ${data.timestamp ? `<p>Sent at: ${data.timestamp}</p>` : ''}
+            <p>If you received this email, your email configuration is working correctly!</p>
+          </div>
+        </div>
       `,
       default: `
-        <h2>${data.subject || 'Notification'}</h2>
-        <p>${data.message || 'You have a new notification from ' + config.app.name}</p>
-        <p>Best regards,<br>The ${config.app.name} Team</p>
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <div style="background-color: #2563eb; color: white; padding: 20px; text-align: center;">
+            <h1>${config.app.name}</h1>
+          </div>
+          <div style="padding: 30px; background-color: #f8f9fa;">
+            <h2>${data.subject || 'Notification'}</h2>
+            <p>${data.message || 'You have a new notification from ' + config.app.name}</p>
+            <p>Best regards,<br>The ${config.app.name} Team</p>
+          </div>
+        </div>
       `
     };
     
@@ -202,22 +238,26 @@ class EmailService {
   
   // Email template methods
   async sendWelcome(user) {
+    console.log('🎉 Sending welcome email...');
     const verificationToken = user.emailVerificationToken || 'test-token';
-    return this.queueEmail(
+    const verificationUrl = `${config.app.url}/api/v1/auth/verify-email-form/${verificationToken}`;
+    
+    return this.send(
       user.email,
-      'Welcome to ATS Platform',
+      'Welcome to ATS Platform - Please Verify Your Email',
       'welcome',
       {
         firstName: user.firstName,
-        verificationUrl: `${config.app.url}/verify-email/${verificationToken}`
+        verificationUrl
       }
     );
   }
   
   async sendPasswordReset(user, resetUrl) {
-    return this.queueEmail(
+    console.log('🔐 Sending password reset email...');
+    return this.send(
       user.email,
-      'Password Reset Request',
+      'Password Reset Request - ATS Platform',
       'passwordReset',
       {
         firstName: user.firstName,
@@ -228,7 +268,7 @@ class EmailService {
   }
   
   async sendCandidateStatusUpdate(candidate) {
-    return this.queueEmail(
+    return this.send(
       candidate.contactInfo.email,
       `Application Status Update - ${candidate.status}`,
       'candidateStatusUpdate',
@@ -243,7 +283,7 @@ class EmailService {
   
   async sendCandidateReviewNotification(candidate) {
     const adminEmail = process.env.ADMIN_EMAIL || 'admin@ats.local';
-    return this.queueEmail(
+    return this.send(
       adminEmail,
       'Candidate Ready for Review',
       'candidateReview',
@@ -264,7 +304,7 @@ class EmailService {
       return;
     }
     
-    return this.queueEmail(
+    return this.send(
       assignedUser.email,
       'New Candidate Assigned',
       'candidateAssignment',
@@ -277,7 +317,7 @@ class EmailService {
   }
   
   async sendInterviewInvitation(candidate, interview) {
-    return this.queueEmail(
+    return this.send(
       candidate.contactInfo.email,
       'Interview Invitation',
       'interviewInvitation',
@@ -295,7 +335,7 @@ class EmailService {
   }
   
   async sendOfferLetter(candidate, offer) {
-    return this.queueEmail(
+    return this.send(
       candidate.contactInfo.email,
       'Job Offer - Congratulations!',
       'offerLetter',
@@ -313,7 +353,7 @@ class EmailService {
   }
   
   async sendRequirementAllocation(user, requirement) {
-    return this.queueEmail(
+    return this.send(
       user.email,
       'New Requirement Assigned',
       'requirementAllocation',
@@ -329,7 +369,7 @@ class EmailService {
   }
   
   async sendDocumentVerificationRequest(candidate, documents) {
-    return this.queueEmail(
+    return this.send(
       candidate.contactInfo.email,
       'Document Verification Required',
       'documentVerification',
@@ -342,32 +382,29 @@ class EmailService {
   }
   
   async sendBulkEmail(recipients, subject, template, commonData) {
-    const jobs = recipients.map(recipient => ({
-      to: recipient.email,
-      subject,
-      template,
-      data: { ...commonData, ...recipient.data }
-    }));
+    const results = [];
     
-    const bulkJobs = await this.emailQueue.addBulk(
-      jobs.map(job => ({ 
-        data: job,
-        opts: {
-          attempts: 3,
-          backoff: {
-            type: 'exponential',
-            delay: 2000
-          }
-        }
-      }))
-    );
+    // Send emails one by one
+    for (const recipient of recipients) {
+      try {
+        const result = await this.send(
+          recipient.email,
+          subject,
+          template,
+          { ...commonData, ...recipient.data }
+        );
+        results.push({ email: recipient.email, success: true, result });
+      } catch (error) {
+        console.error(`Failed to send to ${recipient.email}:`, error.message);
+        results.push({ email: recipient.email, success: false, error: error.message });
+      }
+    }
     
-    console.log(`Bulk email queued: ${bulkJobs.length} emails`);
-    return bulkJobs;
+    return results;
   }
   
   async sendDailyDigest(user, data) {
-    return this.queueEmail(
+    return this.send(
       user.email,
       'Your Daily ATS Summary',
       'dailyDigest',
@@ -383,6 +420,7 @@ class EmailService {
   
   // Test email functionality
   async sendTestEmail(to) {
+    console.log('🧪 Sending test email...');
     return this.send(
       to,
       'ATS Platform - Test Email',
@@ -392,6 +430,71 @@ class EmailService {
         timestamp: new Date().toISOString()
       }
     );
+  }
+  
+  // Additional utility methods
+  async sendClientOnboardingComplete(client) {
+    return this.send(
+      client.spocDetails[0]?.email || process.env.ADMIN_EMAIL,
+      'Client Onboarding Complete',
+      'clientOnboarding',
+      {
+        clientName: client.businessDetails.clientName,
+        clientId: client._id,
+        dashboardUrl: `${config.app.url}/clients/${client._id}`
+      }
+    );
+  }
+  
+  async sendAgencyApproved(agency, tempPassword) {
+    return this.send(
+      agency.contactDetails.primaryContact.email,
+      'Agency Registration Approved',
+      'agencyApproved',
+      {
+        agencyName: agency.companyDetails.companyName,
+        email: agency.contactDetails.primaryContact.email,
+        tempPassword,
+        loginUrl: `${config.app.url}/login`
+      }
+    );
+  }
+  
+  async sendWorkflowReminder(user, entity) {
+    return this.send(
+      user.email,
+      'Workflow Action Required',
+      'workflowReminder',
+      {
+        userName: user.firstName,
+        entityType: entity.constructor.modelName,
+        entityName: entity.name || entity.title || entity._id,
+        currentStage: entity.workflowStage,
+        actionUrl: `${config.app.url}/${entity.constructor.modelName.toLowerCase()}s/${entity._id}`
+      }
+    );
+  }
+  
+  async sendApprovalReminder(entity) {
+    return this.send(
+      process.env.ADMIN_EMAIL,
+      'Approval Required',
+      'approvalReminder',
+      {
+        entityType: entity.constructor.modelName,
+        entityName: entity.name || entity.title || entity._id,
+        pendingSince: entity.updatedAt,
+        approvalUrl: `${config.app.url}/admin/approvals/${entity._id}`
+      }
+    );
+  }
+  
+  // For backward compatibility - queueEmail now just sends directly
+  async queueEmail(to, subject, template, data) {
+    console.log(`📧 Preparing to send email to: ${to}`);
+    console.log(`   Subject: ${subject}`);
+    console.log(`   Template: ${template}`);
+    return this.send(to, subject, template, data);
   }
 }
 

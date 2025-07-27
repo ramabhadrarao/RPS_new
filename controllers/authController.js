@@ -557,37 +557,74 @@ exports.logout = (req, res) => {
 
 // Forgot password
 exports.forgotPassword = catchAsync(async (req, res, next) => {
-  const user = await User.findOne({ email: req.body.email });
+  const { email } = req.body;
+  
+  if (!email) {
+    return next(new AppError('Please provide an email address', 400));
+  }
+  
+  console.log('🔐 Password reset requested for:', email);
+  
+  // Find user with case-insensitive email
+  const user = await User.findOne({ email: email.toLowerCase() });
   
   if (!user) {
+    console.log('   User not found, but returning success for security');
+    // Don't reveal if user exists
     return res.status(200).json({
       status: 'success',
       message: 'If an account exists with this email, a password reset link has been sent.'
     });
   }
   
-  const resetToken = user.createPasswordResetToken();
-  await user.save({ validateBeforeSave: false });
+  console.log('   User found:', user.email);
   
-  // Send email asynchronously
-  setImmediate(async () => {
-    try {
-      const resetURL = `${process.env.APP_URL}/reset-password/${resetToken}`;
-      await EmailService.sendPasswordReset(user, resetURL);
-    } catch (error) {
-      console.error('Failed to send password reset email:', error);
-      user.passwordResetToken = undefined;
-      user.passwordResetExpires = undefined;
-      await user.save({ validateBeforeSave: false });
+  try {
+    // Generate reset token
+    const resetToken = user.createPasswordResetToken();
+    await user.save({ validateBeforeSave: false });
+    
+    console.log('   Reset token generated');
+    
+    // Build reset URL
+    const resetURL = `${process.env.APP_URL}/api/v1/auth/reset-password/${resetToken}`;
+    console.log('   Reset URL:', resetURL);
+    
+    // Send email synchronously to ensure it completes
+    console.log('   Attempting to send email...');
+    const emailResult = await EmailService.sendPasswordReset(user, resetURL);
+    
+    console.log('   ✅ Email sent successfully!');
+    console.log('   Message ID:', emailResult.messageId);
+    
+    res.status(200).json({
+      status: 'success',
+      message: 'Password reset link sent to email!',
+      // Include additional info in development
+      ...(process.env.NODE_ENV === 'development' && { 
+        resetUrl: resetURL,
+        emailSent: true,
+        messageId: emailResult.messageId
+      })
+    });
+    
+  } catch (error) {
+    console.error('   ❌ Failed to send password reset email:', error.message);
+    console.error('   Full error:', error);
+    
+    // Revert the password reset token
+    user.passwordResetToken = undefined;
+    user.passwordResetExpires = undefined;
+    await user.save({ validateBeforeSave: false });
+    
+    // In development, show the actual error
+    if (process.env.NODE_ENV === 'development') {
+      return next(new AppError(`Email sending failed: ${error.message}`, 500));
     }
-  });
-  
-  res.status(200).json({
-    status: 'success',
-    message: 'Password reset link sent to email!'
-  });
+    
+    return next(new AppError('There was an error sending the email. Please try again.', 500));
+  }
 });
-
 // Get password reset form
 exports.getPasswordResetForm = catchAsync(async (req, res, next) => {
   const token = req.params.token;
