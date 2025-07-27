@@ -23,16 +23,16 @@ exports.uploadLimiter = this.createRateLimiter(15 * 60 * 1000, 10);
 
 // Security middleware setup
 exports.setupSecurity = (app) => {
-  // Helmet for security headers
+  // Helmet for security headers with relaxed CSP for development
   app.use(helmet({
-    contentSecurityPolicy: {
+    contentSecurityPolicy: process.env.NODE_ENV === 'production' ? {
       directives: {
         defaultSrc: ["'self'"],
         styleSrc: ["'self'", "'unsafe-inline'"],
-        scriptSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-inline'"], // Allow inline scripts for dev
         imgSrc: ["'self'", "data:", "https:"],
       },
-    },
+    } : false, // Disable CSP in development
   }));
   
   // Data sanitization against NoSQL query injection
@@ -48,20 +48,43 @@ exports.setupSecurity = (app) => {
   
   // CORS configuration
   const cors = require('cors');
+  
   const corsOptions = {
     origin: function (origin, callback) {
-      const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000'];
-      if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin) {
+        return callback(null, true);
+      }
+      
+      const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',').map(o => o.trim()) || ['http://localhost:3000'];
+      
+      // In development, be more permissive
+      if (process.env.NODE_ENV === 'development') {
+        // Allow any localhost origin in development
+        if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
+          return callback(null, true);
+        }
+      }
+      
+      // Check against allowed origins
+      if (allowedOrigins.indexOf(origin) !== -1) {
         callback(null, true);
       } else {
+        console.log('CORS blocked origin:', origin);
+        console.log('Allowed origins:', allowedOrigins);
         callback(new Error('Not allowed by CORS'));
       }
     },
     credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    exposedHeaders: ['X-Total-Count', 'X-Total-Pages']
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    exposedHeaders: ['X-Total-Count', 'X-Total-Pages'],
+    preflightContinue: false,
+    optionsSuccessStatus: 204
   };
   
   app.use(cors(corsOptions));
+  
+  // Handle preflight requests
+  app.options('*', cors(corsOptions));
 };
