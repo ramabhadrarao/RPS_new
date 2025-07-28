@@ -1,6 +1,5 @@
 // scripts/setup.js
 const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
 const User = require('../models/User');
 require('dotenv').config();
 
@@ -45,11 +44,10 @@ async function createSuperAdmin() {
   const existingAdmin = await User.findOne({ role: 'super_admin' });
   
   if (!existingAdmin) {
-    const hashedPassword = await bcrypt.hash('Admin@123', 12);
-    
+    // Create user with plain password - let the model handle hashing
     await User.create({
       email: 'admin@ats.com',
-      password: hashedPassword,
+      password: 'Admin@123',  // Plain password - will be hashed by pre-save hook
       firstName: 'Super',
       lastName: 'Admin',
       role: 'super_admin',
@@ -70,11 +68,10 @@ async function createSampleData() {
   const hrUser = await User.findOne({ email: 'hr@ats.com' });
   
   if (!hrUser) {
-    const hashedPassword = await bcrypt.hash('Hr@123', 12);
-    
+    // Plain password - will be hashed by pre-save hook
     await User.create({
       email: 'hr@ats.com',
-      password: hashedPassword,
+      password: 'Hr@123',  // Plain password
       firstName: 'HR',
       lastName: 'Manager',
       role: 'hr',
@@ -82,18 +79,19 @@ async function createSampleData() {
       isActive: true
     });
     
-    console.log('Sample HR user created');
+    console.log('Sample HR user created:');
+    console.log('Email: hr@ats.com');
+    console.log('Password: Hr@123');
   }
   
   // Create sample recruiter
   const recruiterUser = await User.findOne({ email: 'recruiter@ats.com' });
   
   if (!recruiterUser) {
-    const hashedPassword = await bcrypt.hash('Recruiter@123', 12);
-    
+    // Plain password - will be hashed by pre-save hook
     await User.create({
       email: 'recruiter@ats.com',
-      password: hashedPassword,
+      password: 'Recruiter@123',  // Plain password
       firstName: 'John',
       lastName: 'Recruiter',
       role: 'recruiter',
@@ -101,7 +99,9 @@ async function createSampleData() {
       isActive: true
     });
     
-    console.log('Sample recruiter created');
+    console.log('Sample recruiter created:');
+    console.log('Email: recruiter@ats.com');
+    console.log('Password: Recruiter@123');
   }
 }
 
